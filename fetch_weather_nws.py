@@ -9,6 +9,8 @@ NWS API: https://www.weather.gov/documentation/services-web-api
 from datetime import datetime
 from curl_cffi import requests
 import pandas as pd
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 
 # City coordinates
@@ -78,11 +80,9 @@ def fetch_nws_hourly_weather(city_name, lat, lon):
                 "Date": dt.strftime("%Y-%m-%d"),
                 "Temperature": f"{period['temperature']}°{period['temperatureUnit']}",
                 "Condition": period['shortForecast'],
-                "Detailed": period['detailedForecast'],
                 "Precipitation": precip_prob,
                 "Humidity": f"{period.get('relativeHumidity', {}).get('value', 'N/A')}%",
-                "Wind": wind,
-                "Dewpoint": f"{period.get('dewpoint', {}).get('value', 'N/A')}°"
+                "Wind": wind
             })
 
         print(f"  ✓ Fetched {len(hourly_data)} hourly entries")
@@ -121,18 +121,56 @@ def main():
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Hourly Weather', index=False)
 
-            # Auto-adjust column widths
             worksheet = writer.sheets['Hourly Weather']
+
+            # Define styles
+            header_font = Font(name='Arial', size=12, bold=True, color='FFFFFF')
+            header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+            header_alignment = Alignment(horizontal='center', vertical='center')
+
+            cell_alignment = Alignment(horizontal='center', vertical='center')
+            border = Border(
+                left=Side(style='thin', color='D0D0D0'),
+                right=Side(style='thin', color='D0D0D0'),
+                top=Side(style='thin', color='D0D0D0'),
+                bottom=Side(style='thin', color='D0D0D0')
+            )
+
+            # Alternating row colors
+            light_fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+            dark_fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type='solid')
+
+            # Style header row
+            for col_num, column in enumerate(df.columns, 1):
+                cell = worksheet.cell(row=1, column=col_num)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+
+            # Style data rows
+            for row_num in range(2, len(df) + 2):
+                # Alternate row colors
+                row_fill = light_fill if row_num % 2 == 0 else dark_fill
+
+                for col_num in range(1, len(df.columns) + 1):
+                    cell = worksheet.cell(row=row_num, column=col_num)
+                    cell.alignment = cell_alignment
+                    cell.border = border
+                    cell.fill = row_fill
+
+            # Auto-adjust column widths
             for idx, col in enumerate(df.columns):
-                max_length = min(
-                    max(
-                        df[col].astype(str).apply(len).max(),
-                        len(col)
-                    ) + 2,
-                    50  # Max width
-                )
-                col_letter = chr(65 + idx) if idx < 26 else chr(65 + idx // 26 - 1) + chr(65 + idx % 26)
+                max_length = max(
+                    df[col].astype(str).apply(len).max(),
+                    len(col)
+                ) + 3
+                col_letter = get_column_letter(idx + 1)
                 worksheet.column_dimensions[col_letter].width = max_length
+
+            # Set row height for better spacing
+            for row in range(1, len(df) + 2):
+                worksheet.row_dimensions[row].height = 20
 
         print()
         print("=" * 70)
